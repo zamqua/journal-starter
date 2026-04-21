@@ -61,6 +61,8 @@ class EntryCreate(BaseModel):
 
 
 class EntryUpdate(BaseModel):
+    # Model for updating an existing journal entry (user input).
+
     work: (
         Annotated[
             str,
