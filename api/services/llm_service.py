@@ -1,30 +1,19 @@
-"""Task 4: Implement analyze_journal_entry using any OpenAI-compatible API.
+import json
 
-This project mandates the OpenAI Python SDK, which works with:
-  - GitHub Models (default, free, no credit card required)
-  - OpenAI proper
-  - Azure OpenAI
-  - Groq, Together, OpenRouter, Fireworks, DeepInfra
-  - Ollama, LM Studio, vLLM (local)
-  - Anthropic via their OpenAI-compat endpoint
-
-Set OPENAI_API_KEY, and optionally OPENAI_BASE_URL and OPENAI_MODEL
-in your .env file. Settings are loaded by ``api.config.Settings``.
-"""
-
-from openai import AsyncOpenAI
+import openai
+from openai.types.chat import ChatCompletionMessageParam
 
 from api.config import get_settings
 
 
-def _default_client() -> AsyncOpenAI:
+def _default_client() -> openai.AsyncOpenAI:
     """Construct the real OpenAI client from application settings.
 
     Called lazily from ``analyze_journal_entry`` so tests can inject a
     ``MockAsyncOpenAI`` without ever triggering this code path.
     """
     settings = get_settings()
-    return AsyncOpenAI(
+    return openai.AsyncOpenAI(
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
     )
@@ -33,10 +22,11 @@ def _default_client() -> AsyncOpenAI:
 async def analyze_journal_entry(
     entry_id: str,
     entry_text: str,
-    client: AsyncOpenAI | None = None,
+    client: openai.AsyncOpenAI | None = None,
 ) -> dict:
-    """Analyze a journal entry using an OpenAI-compatible LLM.
+    settings = get_settings()
 
+    """Analyze a journal entry using an OpenAI-compatible LLM.
     Args:
         entry_id: ID of the entry being analyzed (pass through to the result).
         entry_text: Combined work + struggle + intention text.
@@ -52,17 +42,32 @@ async def analyze_journal_entry(
                 "summary":   str,
                 "topics":    list[str],
             }
-
-    TODO (Task 4):
-      1. If ``client is None``, call ``_default_client()`` to construct one.
-      2. Build a messages list that includes ``entry_text`` somewhere
-         (the unit tests check that the entry text reaches the LLM).
-      3. Call ``client.chat.completions.create(...)`` with a model name
-         (use ``get_settings().openai_model`` — defaults to "gpt-4o-mini").
-      4. Parse the assistant's JSON response with ``json.loads()``.
-      5. Return a dict with ``entry_id``, ``sentiment``, ``summary``, ``topics``.
     """
-    raise NotImplementedError(
-        "Task 4: implement analyze_journal_entry using the openai SDK. "
-        "See tests/test_llm_service.py for the test contract."
+
+    messages: list[ChatCompletionMessageParam] = [
+        {
+            "role": "system",
+            "content": "You analyze journal entries and return JSON with sentiment, summary, and topics.",
+        },
+        {"role": "user", "content": f"entry_id: {entry_id}\n\nJournal entry:\n{entry_text}"},
+    ]
+    if client is None:
+        client = _default_client()
+
+    response = await client.chat.completions.create(
+        model=settings.openai_model,
+        messages=messages,
     )
+
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError("Model returned empty content")
+
+    parsed = json.loads(content)
+
+    return {
+        "entry_id": entry_id,
+        "sentiment": parsed["sentiment"],
+        "summary": parsed["summary"],
+        "topics": parsed["topics"],
+    }
