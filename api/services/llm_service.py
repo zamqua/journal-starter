@@ -1,9 +1,28 @@
 import json
+import logging
+import re
+from typing import Any
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 
 from api.config import get_settings
+
+logger = logging.getLogger("llm_service")
+
+
+def extract_json_from_markdown(content: str) -> dict[str, Any]:
+    pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
+    match = re.search(pattern, content)
+
+    clean_json_str = match.group(1).strip() if match else content.strip()
+
+    try:
+        return json.loads(clean_json_str)
+    except json.JSONDecodeError as e:
+        # Provide helpful debugging info in the error message
+        logger.error(f"Failed to parse string: {clean_json_str}")
+        raise ValueError(f"Failed to parse JSON from LLM output: {e!s}") from e
 
 
 def _default_client() -> openai.AsyncOpenAI:
@@ -13,6 +32,7 @@ def _default_client() -> openai.AsyncOpenAI:
     ``MockAsyncOpenAI`` without ever triggering this code path.
     """
     settings = get_settings()
+
     return openai.AsyncOpenAI(
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
@@ -63,7 +83,7 @@ async def analyze_journal_entry(
     if content is None:
         raise ValueError("Model returned empty content")
 
-    parsed = json.loads(content)
+    parsed = extract_json_from_markdown(content)
 
     return {
         "entry_id": entry_id,
