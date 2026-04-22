@@ -47,12 +47,17 @@ class EntryService:
             logger.warning("Entry %s not found. Update aborted.", entry_id)
             return None
 
+        filter_updated_data = {
+            key: value for key, value in updated_data.items() if value is not None
+        }
+
         updated_data = {
             **existing_entry,
-            **updated_data,
+            **filter_updated_data,
             "id": entry_id,
             "updated_at": datetime.now(UTC),
         }
+
         await self.db.update_entry(entry_id, updated_data)
         logger.debug("Entry %s updated", entry_id)
         return updated_data
